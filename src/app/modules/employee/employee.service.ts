@@ -12,7 +12,7 @@ import { Employee } from './employee.model';
 import { generateEmployeeId } from './employee.utils';
 
 const createEmployeeIntoDB = async (
-  file: any,
+
   password: string,
   payload: TEmployee,
 ) => {
@@ -106,7 +106,13 @@ const getSingleEmployeeFromDB = async (id: string) => {
 };
 
 const getEmployeeByUserIdFromDB = async (userId: string) => {
-  const result = await Employee.findOne({ user: userId }).populate('user', 'email role status');
+  // Always find user by custom ID first
+  const user = await User.findOne({ id: userId });
+  if (!user) {
+    throw new AppError(httpStatus.NOT_FOUND, 'User not found');
+  }
+  
+  const result = await Employee.findOne({ user: user._id }).populate('user', 'email role status');
   
   if (!result) {
     throw new AppError(httpStatus.NOT_FOUND, 'Employee not found');

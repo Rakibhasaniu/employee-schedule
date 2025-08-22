@@ -8,7 +8,6 @@ const createEmployee = catchAsync(async (req, res) => {
   const { password, employee: employeeData } = req.body;
 
   const result = await EmployeeServices.createEmployeeIntoDB(
-    req.file,
     password,
     employeeData,
   );
@@ -128,9 +127,19 @@ const searchEmployeesBySkills = catchAsync(async (req, res) => {
     });
   }
 
-  const skillsArray = Array.isArray(skills) ? skills : [skills];
+  // ADD THIS CODE HERE 👇
+  let skillsArray: string[];
+  
+  if (Array.isArray(skills)) {
+    skillsArray = skills as string[];
+  } else {
+    // Split the comma-separated string
+    skillsArray = (skills as string).split(',').map(skill => skill.trim());
+  }
+  // ADD THIS CODE HERE 👆
+
   const result = await EmployeeServices.searchEmployeesBySkills(
-    skillsArray as string[],
+    skillsArray,  // Changed from: skillsArray as string[]
     location as string
   );
 
@@ -176,7 +185,7 @@ const updateMyProfile = catchAsync(async (req, res) => {
   const employee = await EmployeeServices.getEmployeeByUserIdFromDB(userId);
   const result = await EmployeeServices.updateEmployeeIntoDB(
     employee._id!.toString(),
-    req.body
+    req.body.employee
   );
 
   sendResponse(res, {
