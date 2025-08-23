@@ -1,4 +1,3 @@
-// modules/TimeOff/timeoff.constant.ts
 
 export const TIME_OFF_STATUS = {
   PENDING: 'pending',

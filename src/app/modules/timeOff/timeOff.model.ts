@@ -1,10 +1,11 @@
-// modules/TimeOff/timeoff.model.ts
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { Schema, model } from 'mongoose';
-import { TTimeOffRequest, TTimeOffBalance, TTimeOffPolicy } from './timeoff.interface';
-import { TIME_OFF_STATUS, TIME_OFF_TYPE } from './timeoff.constant';
 
-// Time Off Request Schema
+import { Query, Schema, model } from 'mongoose';
+import { TTimeOffBalance, TTimeOffPolicy, TTimeOffRequest } from './timeOff.interface';
+import { TIME_OFF_STATUS, TIME_OFF_TYPE } from './timeOff.constant';
+
+
 const timeOffRequestSchema = new Schema<TTimeOffRequest>(
   {
     employee: {
@@ -88,7 +89,6 @@ const timeOffRequestSchema = new Schema<TTimeOffRequest>(
   }
 );
 
-// Virtual for duration calculation
 timeOffRequestSchema.virtual('durationInDays').get(function() {
   const start = new Date(this.startDate);
   const end = new Date(this.endDate);
@@ -96,24 +96,21 @@ timeOffRequestSchema.virtual('durationInDays').get(function() {
   return Math.ceil(timeDiff / (1000 * 3600 * 24)) + 1;
 });
 
-// Virtual for status display
 timeOffRequestSchema.virtual('statusDisplay').get(function() {
   return this.status.charAt(0).toUpperCase() + this.status.slice(1);
 });
 
-// Indexes for performance
 timeOffRequestSchema.index({ employee: 1, startDate: -1 });
 timeOffRequestSchema.index({ status: 1, createdAt: -1 });
 timeOffRequestSchema.index({ type: 1, startDate: 1, endDate: 1 });
 timeOffRequestSchema.index({ reviewedBy: 1, reviewedAt: -1 });
 
-// Query middleware
-timeOffRequestSchema.pre(/^find/, function(next) {
+
+timeOffRequestSchema.pre(/^find/, function(this: Query<any, TTimeOffRequest>, next) {
   this.find({ isDeleted: { $ne: true } });
   next();
 });
 
-// Time Off Balance Schema
 const timeOffBalanceSchema = new Schema<TTimeOffBalance>(
   {
     employee: {
@@ -159,20 +156,16 @@ const timeOffBalanceSchema = new Schema<TTimeOffBalance>(
   }
 );
 
-// Compound index for employee and year
 timeOffBalanceSchema.index({ employee: 1, year: 1 }, { unique: true });
 
-// Virtual for total allocated days
 timeOffBalanceSchema.virtual('totalAllocated').get(function() {
   return this.vacation.allocated + this.sick.allocated + this.personal.allocated;
 });
 
-// Virtual for total used days
 timeOffBalanceSchema.virtual('totalUsed').get(function() {
   return this.vacation.used + this.sick.used + this.personal.used;
 });
 
-// Time Off Policy Schema
 const timeOffPolicySchema = new Schema<TTimeOffPolicy>(
   {
     department: {
@@ -253,7 +246,6 @@ const timeOffPolicySchema = new Schema<TTimeOffPolicy>(
   }
 );
 
-// Index for policy lookup
 timeOffPolicySchema.index({ department: 1, role: 1, location: 1, isActive: 1 });
 
 export const TimeOffRequest = model<TTimeOffRequest>('TimeOffRequest', timeOffRequestSchema);

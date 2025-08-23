@@ -1,4 +1,3 @@
-// modules/TimeOff/timeoff.interface.ts
 
 import { Document, Types } from 'mongoose';
 
@@ -67,7 +66,7 @@ export interface TTimeOffPolicy extends Document {
   annualSickDays: number;
   annualPersonalDays: number;
   maxConsecutiveDays: number;
-  minAdvanceNotice: number; // days
+  minAdvanceNotice: number; 
   maxCarryOver: number;
   requiresApproval: boolean;
   blackoutDates?: Date[];
@@ -78,7 +77,6 @@ export interface TTimeOffPolicy extends Document {
   updatedAt: Date;
 }
 
-// Request DTOs
 export interface ICreateTimeOffRequest {
   type: TTimeOffType;
   startDate: string;
@@ -103,7 +101,6 @@ export interface IReviewTimeOffRequest {
   reviewNotes?: string;
 }
 
-// Query interfaces
 export interface ITimeOffQuery {
   employee?: string;
   department?: string;
@@ -115,14 +112,13 @@ export interface ITimeOffQuery {
   isEmergency?: boolean;
 }
 
-// Analytics interfaces
 export interface ITimeOffAnalytics {
   totalRequests: number;
   approvedRequests: number;
   rejectedRequests: number;
   pendingRequests: number;
   averageProcessingTime: number;
-  mostRequestedType: TTimeOffType;
+  mostRequestedType: string;
   departmentBreakdown: {
     department: string;
     totalRequests: number;

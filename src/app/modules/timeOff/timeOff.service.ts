@@ -1,45 +1,32 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// modules/TimeOff/timeoff.service.ts
+
 
 import httpStatus from 'http-status';
 import mongoose from 'mongoose';
 import AppError from '../../errors/AppError';
 import QueryBuilder from '../../builder/QueryBuilder';
-import { TimeOffRequest, TimeOffBalance, TimeOffPolicy } from './timeoff.model';
 import { Employee } from '../employee/employee.model';
 import { Schedule } from '../schedule/schedule.model';
-import { 
-  TTimeOffRequest, 
-  TTimeOffBalance, 
-  TTimeOffPolicy,
-  ICreateTimeOffRequest,
-  IUpdateTimeOffRequest,
-  IReviewTimeOffRequest,
-  ITimeOffQuery,
-  ITimeOffAnalytics,
-  IEmployeeTimeOffSummary
-} from './timeoff.interface';
-import { TIME_OFF_SEARCHABLE_FIELDS, TIME_OFF_STATUS, TIME_OFF_TYPE } from './timeoff.constant';
+import { ICreateTimeOffRequest, IEmployeeTimeOffSummary, IReviewTimeOffRequest, ITimeOffAnalytics, ITimeOffQuery, IUpdateTimeOffRequest, TTimeOffBalance, TTimeOffRequest } from './timeOff.interface';
+import { TimeOffBalance, TimeOffPolicy, TimeOffRequest } from './timeOff.model';
+import { TIME_OFF_SEARCHABLE_FIELDS, TIME_OFF_STATUS, TIME_OFF_TYPE } from './timeOff.constant';
 
-// ========== TIME-OFF REQUEST SERVICES ==========
+
 
 const createTimeOffRequestIntoDB = async (
   payload: ICreateTimeOffRequest,
   requestedBy: string
 ): Promise<TTimeOffRequest> => {
-  // Validate employee exists
   const employee = await Employee.findOne({ id: requestedBy });
   if (!employee) {
     throw new AppError(httpStatus.NOT_FOUND, 'Employee not found');
   }
 
-  // Calculate total days
   const startDate = new Date(payload.startDate);
   const endDate = new Date(payload.endDate);
   const timeDiff = endDate.getTime() - startDate.getTime();
   const totalDays = Math.ceil(timeDiff / (1000 * 3600 * 24)) + 1;
 
-  // Check if employee has sufficient balance
   const balance = await getOrCreateEmployeeBalance(employee._id.toString());
   const typeBalance = balance[payload.type as keyof typeof balance] as any;
   
@@ -52,7 +39,6 @@ const createTimeOffRequestIntoDB = async (
     }
   }
 
-  // Check for conflicting shifts using aggregation
   const conflictingShifts = await Schedule.aggregate([
     {
       $match: {
@@ -100,21 +86,57 @@ const createTimeOffRequestIntoDB = async (
 
   const result = await TimeOffRequest.create(timeOffData);
   
-  // Update pending balance
   await updateEmployeeBalance(employee._id.toString(), payload.type, totalDays, 'pending');
 
   return result;
 };
-
 const getAllTimeOffRequestsFromDB = async (query: Record<string, unknown>) => {
-  const timeOffQuery = new QueryBuilder(
-    TimeOffRequest.find()
-      .populate('employee', 'id name email department')
-      .populate('requestedBy', 'id name email')
-      .populate('reviewedBy', 'id email role')
-      .populate('replacementEmployee', 'id name email'),
-    query
-  )
+  console.log('Incoming query:', query);
+  
+  // Create base query
+  let baseQuery = TimeOffRequest.find()
+    .populate({
+      path: 'employee',
+      select: 'id name email department',
+      model: 'Employee'
+    })
+    .populate({
+      path: 'requestedBy', 
+      select: 'id name email',
+      model: 'Employee'
+    })
+    .populate({
+      path: 'reviewedBy',
+      select: 'id email role',
+      model: 'User'
+    })
+    .populate({
+      path: 'replacementEmployee',
+      select: 'id name email',
+      model: 'Employee'
+    });
+
+  // Handle date filtering manually if dates are provided
+  if (query.startDate || query.endDate) {
+    const dateFilter: any = {};
+    
+    if (query.startDate) {
+      dateFilter.startDate = { $gte: new Date(query.startDate as string) };
+    }
+    
+    if (query.endDate) {
+      dateFilter.endDate = { $lte: new Date(query.endDate as string) };
+    }
+    
+    baseQuery = baseQuery.where(dateFilter);
+  }
+
+  // Remove date params from query to avoid double processing
+  const filteredQuery = { ...query };
+  delete filteredQuery.startDate;
+  delete filteredQuery.endDate;
+
+  const timeOffQuery = new QueryBuilder(baseQuery, filteredQuery)
     .search(TIME_OFF_SEARCHABLE_FIELDS)
     .filter()
     .sort()
@@ -124,8 +146,31 @@ const getAllTimeOffRequestsFromDB = async (query: Record<string, unknown>) => {
   const result = await timeOffQuery.modelQuery;
   const meta = await timeOffQuery.countTotal();
 
+  console.log('Found documents:', result.length);
+  
   return { result, meta };
 };
+
+// const getAllTimeOffRequestsFromDB = async (query: Record<string, unknown>) => {
+//   const timeOffQuery = new QueryBuilder(
+//     TimeOffRequest.find()
+//       .populate('employee', 'id name email department')
+//       .populate('requestedBy', 'id name email')
+//       .populate('reviewedBy', 'id email role')
+//       .populate('replacementEmployee', 'id name email'),
+//     query
+//   )
+//     .search(TIME_OFF_SEARCHABLE_FIELDS)
+//     .filter()
+//     .sort()
+//     .paginate()
+//     .fields();
+
+//   const result = await timeOffQuery.modelQuery;
+//   const meta = await timeOffQuery.countTotal();
+
+//   return { result, meta };
+// };
 
 const getSingleTimeOffRequestFromDB = async (id: string): Promise<TTimeOffRequest> => {
   const result = await TimeOffRequest.findById(id)
@@ -159,13 +204,21 @@ const updateTimeOffRequestIntoDB = async (
     );
   }
 
-  // Recalculate days if dates changed
   let totalDays = timeOffRequest.totalDays;
   if (payload.startDate || payload.endDate) {
     const startDate = new Date(payload.startDate || timeOffRequest.startDate);
     const endDate = new Date(payload.endDate || timeOffRequest.endDate);
+    
+    if (endDate < startDate) {
+      throw new AppError(
+        httpStatus.BAD_REQUEST,
+        'End date cannot be before start date'
+      );
+    }
+    
     const timeDiff = endDate.getTime() - startDate.getTime();
-    totalDays = Math.ceil(timeDiff / (1000 * 3600 * 24)) + 1;
+    totalDays = Math.ceil(timeDiff / (1000 * 3600 * 24)) + 1; 
+    
     payload.startDate = startDate.toISOString();
     payload.endDate = endDate.toISOString();
   }
@@ -196,7 +249,6 @@ const reviewTimeOffRequestIntoDB = async (
     );
   }
 
-  // Get reviewer information
   const reviewer = await Employee.findOne({ id: reviewedBy }) || 
                   await mongoose.model('User').findOne({ id: reviewedBy });
   
@@ -217,16 +269,13 @@ const reviewTimeOffRequestIntoDB = async (
   }).populate('employee', 'id name email department')
     .populate('reviewedBy', 'id email role');
 
-  // Update employee balance based on approval/rejection
   const employee = timeOffRequest.employee.toString();
   const type = timeOffRequest.type;
   const days = timeOffRequest.totalDays;
 
   if (payload.status === 'approved') {
-    // Move from pending to used
     await updateEmployeeBalance(employee, type, days, 'approve');
   } else {
-    // Remove from pending (restore to remaining)
     await updateEmployeeBalance(employee, type, days, 'reject');
   }
 
@@ -255,7 +304,6 @@ const deleteTimeOffRequestFromDB = async (id: string): Promise<TTimeOffRequest> 
   return result!;
 };
 
-// ========== TIME-OFF BALANCE SERVICES ==========
 
 const getEmployeeBalanceFromDB = async (employeeId: string): Promise<TTimeOffBalance> => {
   const employee = await Employee.findOne({ id: employeeId });
@@ -275,7 +323,6 @@ const getOrCreateEmployeeBalance = async (employeeObjectId: string): Promise<TTi
   });
 
   if (!balance) {
-    // Get employee policy or use default
     const employee = await Employee.findById(employeeObjectId);
     const policy = await TimeOffPolicy.findOne({
       department: employee?.department,
@@ -336,7 +383,6 @@ const updateEmployeeBalance = async (
   await balance.save();
 };
 
-// ========== ANALYTICS WITH MONGODB AGGREGATION ==========
 
 const getTimeOffAnalyticsFromDB = async (
   query: ITimeOffQuery
@@ -388,7 +434,6 @@ const getTimeOffAnalyticsFromDB = async (
     }
   ]);
 
-  // Department breakdown aggregation
   const departmentBreakdown = await TimeOffRequest.aggregate([
     {
       $lookup: {
@@ -421,7 +466,6 @@ const getTimeOffAnalyticsFromDB = async (
     }
   ]);
 
-  // Monthly trends aggregation
   const monthlyTrends = await TimeOffRequest.aggregate([
     { $match: matchStage },
     {
@@ -548,7 +592,6 @@ const getEmployeeTimeOffSummaryFromDB = async (
   };
 };
 
-// ========== HELPER FUNCTIONS ==========
 
 const getMostFrequentType = (types: string[]): string => {
   const frequency: Record<string, number> = {};
