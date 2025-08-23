@@ -16,38 +16,29 @@ const createEmployeeIntoDB = async (
   password: string,
   payload: TEmployee,
 ) => {
-  // create a user object
   const userData: Partial<TUser> = {};
 
-  //if password is not given , use default password
   userData.password = password || (config.default_password as string);
 
-  //set employee role
   userData.role = 'employee';
-  // set employee email
   userData.email = payload.email;
 
   const session = await mongoose.startSession();
 
   try {
     session.startTransaction();
-    //set  generated id
     userData.id = await generateEmployeeId();
 
   
 
-    // create a user (transaction-1)
     const newUser = await User.create([userData], { session }); // array
 
-    //create an employee
     if (!newUser.length) {
       throw new AppError(httpStatus.BAD_REQUEST, 'Failed to create user');
     }
-    // set id , _id as user
     payload.id = newUser[0].id;
     payload.user = newUser[0]._id; //reference _id
 
-    // create an employee (transaction-2)
     const newEmployee = await Employee.create([payload], { session });
 
     if (!newEmployee.length) {
@@ -106,7 +97,6 @@ const getSingleEmployeeFromDB = async (id: string) => {
 };
 
 const getEmployeeByUserIdFromDB = async (userId: string) => {
-  // Always find user by custom ID first
   const user = await User.findOne({ id: userId });
   if (!user) {
     throw new AppError(httpStatus.NOT_FOUND, 'User not found');

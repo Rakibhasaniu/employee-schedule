@@ -81,7 +81,6 @@ const employeeSchema = new Schema<TEmployee>(
   },
 );
 
-// Query middleware
 employeeSchema.pre('find', function (next) {
   this.find({ isDeleted: { $ne: true } });
   next();

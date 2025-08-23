@@ -8,13 +8,12 @@ import { TSchedule, TShift, TConflict, TCoverage } from './schedule.interface';
 import { Schedule } from './schedule.model';
 import { Employee } from '../employee/employee.model';
 
-const createScheduleIntoDB = async (payload: TSchedule) => {
-  // Validate date range
+
+const createScheduleIntoDB = async (payload: TSchedule & { createdBy: string }) => {
   if (payload.weekStartDate >= payload.weekEndDate) {
     throw new AppError(httpStatus.BAD_REQUEST, 'Week start date must be before end date');
   }
 
-  // Validate employees exist
   if (payload.shifts && payload.shifts.length > 0) {
     const employeeIds = payload.shifts.map(shift => shift.employee);
     const employees = await Employee.find({ 
@@ -26,16 +25,30 @@ const createScheduleIntoDB = async (payload: TSchedule) => {
       throw new AppError(httpStatus.BAD_REQUEST, 'Some employees not found or deleted');
     }
 
-    // Check for conflicts
+    payload.shifts = payload.shifts.map(shift => ({
+      ...shift,
+      createdBy: payload.createdBy
+    }));
+
     payload.conflicts = await detectScheduleConflicts(payload.shifts);
 
-    // Calculate coverage
     payload.coverage = calculateCoverage(payload.shifts, payload.coverage || []);
+    
+    if (payload.coverage) {
+      payload.coverage = payload.coverage.map(cov => ({
+        ...cov,
+        shifts: cov.shifts?.map(shift => ({
+          ...shift,
+          createdBy: payload.createdBy
+        })) || []
+      }));
+    }
   }
 
   const result = await Schedule.create(payload);
   return result;
 };
+
 
 const getAllSchedulesFromDB = async (query: Record<string, unknown>) => {
   const scheduleSearchableFields = ['title'];
@@ -78,7 +91,6 @@ const updateScheduleIntoDB = async (id: string, payload: Partial<TSchedule>) => 
     throw new AppError(httpStatus.NOT_FOUND, 'Schedule not found');
   }
 
-  // Prevent updating published schedules
   if (schedule.status === 'published' && payload.shifts) {
     throw new AppError(
       httpStatus.BAD_REQUEST,
@@ -86,13 +98,28 @@ const updateScheduleIntoDB = async (id: string, payload: Partial<TSchedule>) => 
     );
   }
 
-  // If shifts are being updated, recheck conflicts and coverage
   if (payload.shifts) {
+    // Get the original createdBy from the schedule
+    const originalCreatedBy = schedule.createdBy;
+    
+    payload.shifts = payload.shifts.map(shift => ({
+      ...shift,
+      createdBy: originalCreatedBy
+    }));
+
     const conflicts = await detectScheduleConflicts(payload.shifts);
     payload.conflicts = conflicts;
     
     const coverage = calculateCoverage(payload.shifts, payload.coverage || []);
-    payload.coverage = coverage;
+    if (coverage) {
+      payload.coverage = coverage.map(cov => ({
+        ...cov,
+        shifts: cov.shifts?.map(shift => ({
+          ...shift,
+          createdBy: originalCreatedBy
+        })) || []
+      }));
+    }
   }
 
   const result = await Schedule.findByIdAndUpdate(id, payload, {
@@ -104,14 +131,12 @@ const updateScheduleIntoDB = async (id: string, payload: Partial<TSchedule>) => 
 
   return result;
 };
-
 const deleteScheduleFromDB = async (id: string) => {
   const schedule = await Schedule.findById(id);
   if (!schedule) {
     throw new AppError(httpStatus.NOT_FOUND, 'Schedule not found');
   }
 
-  // Prevent deleting published schedules
   if (schedule.status === 'published') {
     throw new AppError(
       httpStatus.BAD_REQUEST,
@@ -130,7 +155,7 @@ const deleteScheduleFromDB = async (id: string) => {
 
 const assignShiftToEmployee = async (
   scheduleId: string,
-  shiftData: Partial<TShift>,
+  shiftData: Partial<TShift> & { createdBy: string },
 ) => {
   const schedule = await Schedule.findById(scheduleId);
   if (!schedule) {
@@ -151,7 +176,8 @@ const assignShiftToEmployee = async (
   }
 
   // Check employee availability
-  const dayOfWeek = new Date(shiftData.date!).toLocaleDateString('en-US', { 
+  const shiftDate = typeof shiftData.date === 'string' ? new Date(shiftData.date) : shiftData.date!;
+  const dayOfWeek = shiftDate.toLocaleDateString('en-US', { 
     weekday: 'long' 
   }).toLowerCase() as keyof typeof employee.availability;
   
@@ -172,8 +198,14 @@ const assignShiftToEmployee = async (
     );
   }
 
+  // Add createdBy to shift data
+  const completeShiftData = {
+    ...shiftData,
+    createdBy: shiftData.createdBy
+  } as TShift;
+
   // Add shift to schedule
-  schedule.shifts.push(shiftData as TShift);
+  schedule.shifts.push(completeShiftData);
   
   // Recalculate conflicts and coverage
   schedule.conflicts = await detectScheduleConflicts(schedule.shifts);
@@ -214,7 +246,6 @@ const publishSchedule = async (id: string, publishedBy: string) => {
     throw new AppError(httpStatus.BAD_REQUEST, 'Schedule is already published');
   }
 
-  // Check for unresolved conflicts
   const unresolvedConflicts = schedule.conflicts.filter(conflict => !conflict.resolved);
   if (unresolvedConflicts.length > 0) {
     throw new AppError(
@@ -249,25 +280,29 @@ const getEmployeeSchedule = async (employeeId: string, startDate: string, endDat
   // Filter to only include shifts for this employee
   const employeeSchedules = schedules.map(schedule => {
     const employeeShifts = schedule.shifts.filter(
-      shift => shift.employee.toString() === employeeId
+      shift => shift.employee._id.toString() === employeeId  // ← Fixed: use _id instead of toString()
     );
     
     return {
       ...schedule.toObject(),
-      shifts: employeeShifts,
+      shifts: employeeShifts,  // ← This should now contain the actual shifts
       totalShifts: employeeShifts.length,
       totalHours: employeeShifts.reduce((total, shift) => {
-        const start = new Date(`1970-01-01T${shift.startTime}`);
-        const end = new Date(`1970-01-01T${shift.endTime}`);
-        const hours = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
-        return total + hours;
+        try {
+          const start = new Date(`1970-01-01T${shift.startTime}:00`);
+          const end = new Date(`1970-01-01T${shift.endTime}:00`);
+          const hours = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
+          return total + Math.max(0, hours);
+        } catch (error) {
+          console.error('Error calculating hours for shift:', shift, error);
+          return total;
+        }
       }, 0),
     };
   });
 
   return employeeSchedules;
 };
-
 // Helper functions
 const detectScheduleConflicts = async (shifts: TShift[]): Promise<TConflict[]> => {
   const conflicts: TConflict[] = [];
@@ -290,15 +325,19 @@ const detectScheduleConflicts = async (shifts: TShift[]): Promise<TConflict[]> =
         const shift1 = empShifts[i];
         const shift2 = empShifts[j];
         
+        // Convert dates to Date objects if they're strings
+        const date1 = typeof shift1.date === 'string' ? new Date(shift1.date) : shift1.date;
+        const date2 = typeof shift2.date === 'string' ? new Date(shift2.date) : shift2.date;
+        
         // Check if shifts are on the same date
-        if (shift1.date.toDateString() === shift2.date.toDateString()) {
+        if (date1.toDateString() === date2.toDateString()) {
           // Check for time overlap
           if (isTimeOverlap(shift1.startTime, shift1.endTime, shift2.startTime, shift2.endTime)) {
             conflicts.push({
               type: 'overlap',
               employeeId: new mongoose.Types.ObjectId(employeeId),
               employeeName,
-              description: `Overlapping shifts on ${shift1.date.toDateString()} (${shift1.startTime}-${shift1.endTime} and ${shift2.startTime}-${shift2.endTime})`,
+              description: `Overlapping shifts on ${date1.toDateString()} (${shift1.startTime}-${shift1.endTime} and ${shift2.startTime}-${shift2.endTime})`,
               conflictingShifts: [shift1._id!, shift2._id!],
               resolved: false,
             });
@@ -311,6 +350,7 @@ const detectScheduleConflicts = async (shifts: TShift[]): Promise<TConflict[]> =
   return conflicts;
 };
 
+
 const detectShiftConflicts = async (existingShifts: TShift[], newShift: TShift): Promise<TConflict[]> => {
   const conflicts: TConflict[] = [];
   const employee = await Employee.findById(newShift.employee);
@@ -321,7 +361,11 @@ const detectShiftConflicts = async (existingShifts: TShift[], newShift: TShift):
   );
 
   employeeShifts.forEach(existingShift => {
-    if (existingShift.date.toDateString() === newShift.date.toDateString()) {
+    // Convert dates to Date objects if they're strings
+    const existingDate = typeof existingShift.date === 'string' ? new Date(existingShift.date) : existingShift.date;
+    const newDate = typeof newShift.date === 'string' ? new Date(newShift.date) : newShift.date;
+    
+    if (existingDate.toDateString() === newDate.toDateString()) {
       if (isTimeOverlap(
         existingShift.startTime, 
         existingShift.endTime, 
@@ -332,7 +376,7 @@ const detectShiftConflicts = async (existingShifts: TShift[], newShift: TShift):
           type: 'overlap',
           employeeId: newShift.employee,
           employeeName,
-          description: `Overlapping with existing shift on ${newShift.date.toDateString()}`,
+          description: `Overlapping with existing shift on ${newDate.toDateString()}`,
           conflictingShifts: [existingShift._id!, newShift._id!],
           resolved: false,
         });

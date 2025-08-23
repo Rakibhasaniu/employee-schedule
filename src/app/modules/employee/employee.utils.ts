@@ -1,4 +1,3 @@
-// modules/Employee/employee.utils.ts
 import { User } from '../User/user.model';
 
 const findLastEmployeeId = async () => {
@@ -26,7 +25,6 @@ export const generateEmployeeId = async () => {
   return incrementId;
 };
 
-// Generate User ID for different roles
 const findLastUserId = async (role: string) => {
   const lastUser = await User.findOne(
     { role },

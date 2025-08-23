@@ -75,7 +75,7 @@ const coverageSchema = new Schema<TCoverage>({
     type: Number, 
     default: 0,
     min: 0,
-    max: 100,
+    // max: 100,
   },
   shifts: [shiftSchema],
 }, { _id: false });
