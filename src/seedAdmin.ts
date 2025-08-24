@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // src/seedAdmin.ts
 import mongoose from 'mongoose';
 import bcrypt from 'bcrypt';
