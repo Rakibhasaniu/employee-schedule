@@ -166,9 +166,11 @@ const generateShiftsFromTemplate = async (
 
   const generatedShifts: any[] = [];
 
-  // Find employees with required skills for auto-assignment
+  // Find employees with required skills, location, and role for auto-assignment
   const availableEmployees = await Employee.find({
-    skills: { $in: template.defaultShift.requiredSkills },
+    skills: { $all: template.defaultShift.requiredSkills }, // Use $all instead of $in
+    location: template.location, // Match template location
+    role: { $regex: new RegExp(`^${template.defaultShift.role}$`, 'i') }, // Case-insensitive role match
     isDeleted: false,
     status: 'active'
   });
@@ -181,19 +183,18 @@ const generateShiftsFromTemplate = async (
 
     // Check recurrence pattern
     switch (template.recurrencePattern.type) {
-  case 'daily':
-    shouldCreateShift = true;
-    break;
-  case 'weekly': {
-    const dayName = getDayName(currentDate);
-    shouldCreateShift = template.recurrencePattern.days?.includes(dayName) || false;
-    break;
-  }
-  case 'monthly':
-    // Create shift on the same day of month as start date
-    shouldCreateShift = currentDate.getDate() === startDate.getDate();
-    break;
-}
+      case 'daily':
+        shouldCreateShift = true;
+        break;
+      case 'weekly': {
+        const dayName = getDayName(currentDate);
+        shouldCreateShift = template.recurrencePattern.days?.includes(dayName) || false;
+        break;
+      }
+      case 'monthly':
+        shouldCreateShift = currentDate.getDate() === startDate.getDate();
+        break;
+    }
 
     // Check if we've passed the recurrence end date
     if (template.recurrencePattern.endDate && currentDate > template.recurrencePattern.endDate) {
@@ -201,10 +202,20 @@ const generateShiftsFromTemplate = async (
     }
 
     if (shouldCreateShift) {
-      // Find suitable employee based on availability
+      // Find suitable employee based on availability and time slots
       const suitableEmployee = availableEmployees.find(emp => {
         const dayOfWeek = getDayName(currentDate);
-        return emp.availability[dayOfWeek]?.available;
+        const availability = emp.availability[dayOfWeek];
+        
+        if (!availability || !availability.available) return false;
+        
+        // Check if shift time fits within availability
+        const shiftStart = new Date(`1970-01-01T${template.defaultShift.startTime}`);
+        const shiftEnd = new Date(`1970-01-01T${template.defaultShift.endTime}`);
+        const availStart = new Date(`1970-01-01T${availability.start}`);
+        const availEnd = new Date(`1970-01-01T${availability.end}`);
+        
+        return shiftStart >= availStart && shiftEnd <= availEnd;
       });
 
       const shiftData = {
@@ -237,7 +248,6 @@ const generateShiftsFromTemplate = async (
 
   return [];
 };
-
 const getTemplatesByDepartment = async (department: string) => {
   const templates = await ShiftTemplate.find({
     department,

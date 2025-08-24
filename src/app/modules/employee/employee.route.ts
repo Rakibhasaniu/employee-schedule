@@ -73,7 +73,7 @@ router.get(
 // Update employee availability (Admin/Super Admin only)
 router.patch(
   '/:employeeId/availability',
-  auth(USER_ROLE.superAdmin, USER_ROLE.admin),
+  auth(USER_ROLE.superAdmin, USER_ROLE.admin, USER_ROLE.employee),
   validateRequest(EmployeeValidations.updateAvailabilityValidationSchema),
   EmployeeControllers.updateEmployeeAvailability,
 );

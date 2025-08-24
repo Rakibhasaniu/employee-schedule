@@ -268,38 +268,63 @@ const publishSchedule = async (id: string, publishedBy: string) => {
 };
 
 const getEmployeeSchedule = async (employeeId: string, startDate: string, endDate: string) => {
+  const queryStartDate = new Date(startDate);
+  const queryEndDate = new Date(endDate);
+
+  // Use overlapping date range logic to find schedules that intersect with the query period
   const schedules = await Schedule.find({
     'shifts.employee': employeeId,
-    weekStartDate: { $gte: new Date(startDate) },
-    weekEndDate: { $lte: new Date(endDate) },
+    $or: [
+      // Schedule starts within query period
+      {
+        weekStartDate: { $gte: queryStartDate, $lte: queryEndDate }
+      },
+      // Schedule ends within query period  
+      {
+        weekEndDate: { $gte: queryStartDate, $lte: queryEndDate }
+      },
+      // Schedule spans the entire query period
+      {
+        weekStartDate: { $lte: queryStartDate },
+        weekEndDate: { $gte: queryEndDate }
+      }
+    ],
     status: { $in: ['published', 'completed'] }
   })
-    .populate('shifts.employee', 'id name')
+    .populate('shifts.employee', 'id name email role department')
     .sort({ weekStartDate: 1 });
 
-  // Filter to only include shifts for this employee
+  // Filter and transform schedules to only include relevant employee shifts within date range
   const employeeSchedules = schedules.map(schedule => {
-    const employeeShifts = schedule.shifts.filter(
-      shift => shift.employee._id.toString() === employeeId  // ← Fixed: use _id instead of toString()
-    );
+    // Filter shifts for this specific employee and within the date range
+    const employeeShifts = schedule.shifts.filter(shift => {
+      const shiftDate = new Date(shift.date);
+      const isCorrectEmployee = shift.employee._id.toString() === employeeId;
+      const isWithinDateRange = shiftDate >= queryStartDate && shiftDate <= queryEndDate;
+      
+      return isCorrectEmployee && isWithinDateRange;
+    });
     
+    // Calculate total hours for filtered shifts
+    const totalHours = employeeShifts.reduce((total, shift) => {
+      try {
+        const start = new Date(`1970-01-01T${shift.startTime}:00`);
+        const end = new Date(`1970-01-01T${shift.endTime}:00`);
+        const hours = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
+        return total + Math.max(0, hours);
+      } catch (error) {
+        console.error('Error calculating hours for shift:', shift, error);
+        return total;
+      }
+    }, 0);
+
     return {
       ...schedule.toObject(),
-      shifts: employeeShifts,  // ← This should now contain the actual shifts
+      shifts: employeeShifts,
       totalShifts: employeeShifts.length,
-      totalHours: employeeShifts.reduce((total, shift) => {
-        try {
-          const start = new Date(`1970-01-01T${shift.startTime}:00`);
-          const end = new Date(`1970-01-01T${shift.endTime}:00`);
-          const hours = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
-          return total + Math.max(0, hours);
-        } catch (error) {
-          console.error('Error calculating hours for shift:', shift, error);
-          return total;
-        }
-      }, 0),
+      totalHours: Math.round(totalHours * 100) / 100, // Round to 2 decimal places
     };
-  });
+  }).filter(schedule => schedule.shifts.length > 0); // Only return schedules with shifts
 
   return employeeSchedules;
 };

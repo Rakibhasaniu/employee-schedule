@@ -91,9 +91,9 @@ const shiftCoverageValidationSchema = z.object({
     endDate: z.string().transform((str) => new Date(str)),
     location: z.string().optional(),
   }).refine((data) => {
-    return data.startDate < data.endDate;
+    return data.startDate <= data.endDate; // Changed from < to <=
   }, {
-    message: "Start date must be before end date",
+    message: "Start date must be before or equal to end date", // Updated message
     path: ["startDate"],
   }),
 });

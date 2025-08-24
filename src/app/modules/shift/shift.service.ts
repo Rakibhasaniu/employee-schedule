@@ -151,17 +151,109 @@ const deleteShiftFromDB = async (id: string) => {
 
 // MongoDB Aggregation Pipelines
 
+// const getShiftCoverageByDateRange = async (
+//   startDate: string, 
+//   endDate: string, 
+//   location?: string
+// ): Promise<TShiftCoverage[]> => {
+//   const matchStage: mongoose.FilterQuery<any> = {
+//     date: {
+//       $gte: new Date(startDate),
+//       $lte: new Date(endDate)
+//     },
+//     status: { $ne: 'cancelled' }
+//   };
+
+//   if (location) {
+//     matchStage.location = location;
+//   }
+
+//   const pipeline: mongoose.PipelineStage[] = [
+//     { $match: matchStage },
+//     {
+//       $lookup: {
+//         from: 'employees',
+//         localField: 'employee',
+//         foreignField: '_id',
+//         as: 'employeeInfo'
+//       }
+//     },
+//     { $unwind: '$employeeInfo' },
+//     {
+//       $addFields: {
+//         duration: {
+//           $divide: [
+//             {
+//               $subtract: [
+//                 { $dateFromString: { dateString: { $concat: ['1970-01-01T', '$endTime', ':00'] } } },
+//                 { $dateFromString: { dateString: { $concat: ['1970-01-01T', '$startTime', ':00'] } } }
+//               ]
+//             },
+//             1000 * 60 * 60 // Convert to hours
+//           ]
+//         }
+//       }
+//     },
+//     {
+//       $group: {
+//         _id: {
+//           location: '$location',
+//           date: '$date'
+//         },
+//         totalShifts: { $sum: 1 },
+//         totalHours: { $sum: '$duration' },
+//         roleBreakdown: {
+//           $push: {
+//             role: '$role',
+//             employee: {
+//               id: '$employeeInfo.id',
+//               name: { $concat: ['$employeeInfo.name.firstName', ' ', '$employeeInfo.name.lastName'] }
+//             }
+//           }
+//         }
+//       }
+//     },
+//     {
+//       $group: {
+//         _id: '$_id.location',
+//         dates: {
+//           $push: {
+//             date: '$_id.date',
+//             totalShifts: '$totalShifts',
+//             totalHours: '$totalHours',
+//             roleBreakdown: '$roleBreakdown'
+//           }
+//         }
+//       }
+//     },
+//     {
+//       $project: {
+//         _id: 0,
+//         location: '$_id',
+//         dates: 1
+//       }
+//     },
+//     { 
+//       $sort: { location: 1 as const } 
+//     }
+//   ];
+
+//   const result = await Shift.aggregate(pipeline);
+//   return result;
+// };
+// modules/Shift/shift.service.ts - Fixed aggregation pipeline
 const getShiftCoverageByDateRange = async (
   startDate: string, 
   endDate: string, 
   location?: string
 ): Promise<TShiftCoverage[]> => {
-  const matchStage: mongoose.FilterQuery<any> = {
+  const matchStage: any = {
     date: {
       $gte: new Date(startDate),
       $lte: new Date(endDate)
     },
-    status: { $ne: 'cancelled' }
+    status: { $ne: 'cancelled' },
+    isTimeOff: false
   };
 
   if (location) {
@@ -181,15 +273,43 @@ const getShiftCoverageByDateRange = async (
     { $unwind: '$employeeInfo' },
     {
       $addFields: {
+        // Calculate duration in hours (handling break time)
         duration: {
-          $divide: [
+          $subtract: [
             {
-              $subtract: [
-                { $dateFromString: { dateString: { $concat: ['1970-01-01T', '$endTime', ':00'] } } },
-                { $dateFromString: { dateString: { $concat: ['1970-01-01T', '$startTime', ':00'] } } }
+              $divide: [
+                {
+                  $subtract: [
+                    { 
+                      $dateFromString: { 
+                        dateString: { 
+                          $concat: [
+                            { $dateToString: { format: '%Y-%m-%d', date: '$date' } },
+                            'T',
+                            '$endTime',
+                            ':00'
+                          ]
+                        }
+                      } 
+                    },
+                    { 
+                      $dateFromString: { 
+                        dateString: { 
+                          $concat: [
+                            { $dateToString: { format: '%Y-%m-%d', date: '$date' } },
+                            'T',
+                            '$startTime',
+                            ':00'
+                          ]
+                        }
+                      } 
+                    }
+                  ]
+                },
+                1000 * 60 * 60 // Convert from milliseconds to hours
               ]
             },
-            1000 * 60 * 60 // Convert to hours
+            { $divide: ['$breakDuration', 60] } // Convert break minutes to hours
           ]
         }
       }
@@ -207,10 +327,18 @@ const getShiftCoverageByDateRange = async (
             role: '$role',
             employee: {
               id: '$employeeInfo.id',
-              name: { $concat: ['$employeeInfo.name.firstName', ' ', '$employeeInfo.name.lastName'] }
-            }
+              name: { 
+                $concat: [
+                  '$employeeInfo.name.firstName', 
+                  ' ', 
+                  '$employeeInfo.name.lastName'
+                ]
+              }
+            },
+            hours: '$duration'
           }
-        }
+        },
+        employees: { $addToSet: '$employeeInfo._id' }
       }
     },
     {
@@ -220,7 +348,8 @@ const getShiftCoverageByDateRange = async (
           $push: {
             date: '$_id.date',
             totalShifts: '$totalShifts',
-            totalHours: '$totalHours',
+            totalHours: { $round: ['$totalHours', 2] },
+            uniqueEmployees: { $size: '$employees' },
             roleBreakdown: '$roleBreakdown'
           }
         }
@@ -234,14 +363,13 @@ const getShiftCoverageByDateRange = async (
       }
     },
     { 
-      $sort: { location: 1 as const } 
+      $sort: { location: 1 } 
     }
   ];
 
   const result = await Shift.aggregate(pipeline);
   return result;
 };
-
 const getEmployeeWorkloadAnalysis = async (
   startDate: string,
   endDate: string,

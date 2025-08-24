@@ -8,13 +8,13 @@ const timeSlotSchema = z.object({
 });
 
 const availabilitySchema = z.object({
-  monday: timeSlotSchema,
-  tuesday: timeSlotSchema,
-  wednesday: timeSlotSchema,
-  thursday: timeSlotSchema,
-  friday: timeSlotSchema,
-  saturday: timeSlotSchema,
-  sunday: timeSlotSchema,
+  monday: timeSlotSchema.optional(),
+  tuesday: timeSlotSchema.optional(),
+  wednesday: timeSlotSchema.optional(),
+  thursday: timeSlotSchema.optional(),
+  friday: timeSlotSchema.optional(),
+  saturday: timeSlotSchema.optional(),
+  sunday: timeSlotSchema.optional(),
 });
 
 const createEmployeeValidationSchema = z.object({
