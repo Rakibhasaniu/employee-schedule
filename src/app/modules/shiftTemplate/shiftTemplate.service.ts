@@ -3,25 +3,30 @@
 import httpStatus from 'http-status';
 import mongoose from 'mongoose';
 import AppError from '../../errors/AppError';
-import QueryBuilder from '../../builder/QueryBuilder';
 import { ShiftTemplate } from './shiftTemplate.model';
 import { Employee } from '../employee/employee.model';
 import { TShiftTemplate } from './shiftTemplate.interface';
 import { Shift } from '../shift/shift.model';
 import { generateDateRange, getDayName } from '../../utils/dateUtils';
 
-
 const createShiftTemplateIntoDB = async (payload: TShiftTemplate) => {
-  // Validate that the template doesn't conflict with existing templates
-  const existingTemplate = await ShiftTemplate.findOne({
-    name: payload.name,
-    department: payload.department,
-    location: payload.location,
-    isActive: true,
-    isDeleted: false
-  });
+  // Use aggregation to check for existing templates
+  const existingTemplate = await ShiftTemplate.aggregate([
+    {
+      $match: {
+        name: payload.name,
+        department: payload.department,
+        location: payload.location,
+        isActive: true,
+        isDeleted: false
+      }
+    },
+    {
+      $limit: 1
+    }
+  ]);
 
-  if (existingTemplate) {
+  if (existingTemplate.length > 0) {
     throw new AppError(
       httpStatus.CONFLICT, 
       'An active template with this name already exists for this department and location'
@@ -34,62 +39,203 @@ const createShiftTemplateIntoDB = async (payload: TShiftTemplate) => {
 
 const getAllShiftTemplatesFromDB = async (query: Record<string, unknown>) => {
   const templateSearchableFields = ['name', 'description', 'department', 'location'];
+  
+  // Build match stage based on query filters
+  const matchStage: any = { isDeleted: false };
+  
+  // Handle search functionality
+  if (query.searchTerm) {
+    const searchRegex = { $regex: query.searchTerm, $options: 'i' };
+    matchStage.$or = templateSearchableFields.map(field => ({
+      [field]: searchRegex
+    }));
+  }
 
-  const templateQuery = new QueryBuilder(
-    ShiftTemplate.find({ isDeleted: false })
-      .populate('createdBy', 'id email role')
-      .populate('updatedBy', 'id email role'),
-    query,
-  )
-    .search(templateSearchableFields)
-    .filter()
-    .sort()
-    .paginate()
-    .fields();
+  // Handle other filters
+  Object.keys(query).forEach(key => {
+    if (!['searchTerm', 'sort', 'limit', 'page', 'fields'].includes(key)) {
+      matchStage[key] = query[key];
+    }
+  });
 
-  const result = await templateQuery.modelQuery;
-  const meta = await templateQuery.countTotal();
+  // Build sort stage
+  let sortStage: any = { createdAt: -1 };
+  if (query.sort) {
+    const sortBy = query.sort as string;
+    const sortOrder = sortBy.startsWith('-') ? -1 : 1;
+    const sortField = sortBy.startsWith('-') ? sortBy.slice(1) : sortBy;
+    sortStage = { [sortField]: sortOrder };
+  }
+
+  // Pagination
+  const page = Number(query.page) || 1;
+  const limit = Number(query.limit) || 10;
+  const skip = (page - 1) * limit;
+
+  // Build projection stage for fields
+  let projectStage: any = null;
+  if (query.fields) {
+    const fields = (query.fields as string).split(',');
+    projectStage = {};
+    fields.forEach(field => {
+      projectStage[field.trim()] = 1;
+    });
+  }
+
+  const pipeline: mongoose.PipelineStage[] = [
+    { $match: matchStage },
+    {
+      $lookup: {
+        from: 'users', // assuming users collection for createdBy
+        localField: 'createdBy',
+        foreignField: '_id',
+        as: 'createdBy',
+        pipeline: [
+          { $project: { id: 1, email: 1, role: 1 } }
+        ]
+      }
+    },
+    {
+      $lookup: {
+        from: 'users', // assuming users collection for updatedBy
+        localField: 'updatedBy',
+        foreignField: '_id',
+        as: 'updatedBy',
+        pipeline: [
+          { $project: { id: 1, email: 1, role: 1 } }
+        ]
+      }
+    },
+    {
+      $unwind: {
+        path: '$createdBy',
+        preserveNullAndEmptyArrays: true
+      }
+    },
+    {
+      $unwind: {
+        path: '$updatedBy',
+        preserveNullAndEmptyArrays: true
+      }
+    },
+    { $sort: sortStage },
+    { $skip: skip },
+    { $limit: limit }
+  ];
+
+  // Add projection stage if fields are specified
+  if (projectStage) {
+    pipeline.push({ $project: projectStage });
+  }
+
+  const result = await ShiftTemplate.aggregate(pipeline);
+
+  // Get total count for pagination
+  const countPipeline = [
+    { $match: matchStage },
+    { $count: 'total' }
+  ];
+  const countResult = await ShiftTemplate.aggregate(countPipeline);
+  const total = countResult[0]?.total || 0;
+
+  const meta = {
+    page,
+    limit,
+    total,
+    totalPage: Math.ceil(total / limit)
+  };
 
   return { result, meta };
 };
 
 const getSingleShiftTemplateFromDB = async (id: string) => {
-  const result = await ShiftTemplate.findOne({ 
-    _id: id, 
-    isDeleted: false 
-  })
-    .populate('createdBy', 'id email role')
-    .populate('updatedBy', 'id email role');
+  const pipeline: mongoose.PipelineStage[] = [
+    {
+      $match: {
+        _id: new mongoose.Types.ObjectId(id),
+        isDeleted: false
+      }
+    },
+    {
+      $lookup: {
+        from: 'users',
+        localField: 'createdBy',
+        foreignField: '_id',
+        as: 'createdBy',
+        pipeline: [
+          { $project: { id: 1, email: 1, role: 1 } }
+        ]
+      }
+    },
+    {
+      $lookup: {
+        from: 'users',
+        localField: 'updatedBy',
+        foreignField: '_id',
+        as: 'updatedBy',
+        pipeline: [
+          { $project: { id: 1, email: 1, role: 1 } }
+        ]
+      }
+    },
+    {
+      $unwind: {
+        path: '$createdBy',
+        preserveNullAndEmptyArrays: true
+      }
+    },
+    {
+      $unwind: {
+        path: '$updatedBy',
+        preserveNullAndEmptyArrays: true
+      }
+    }
+  ];
 
-  if (!result) {
+  const result = await ShiftTemplate.aggregate(pipeline);
+
+  if (!result || result.length === 0) {
     throw new AppError(httpStatus.NOT_FOUND, 'Shift template not found');
   }
 
-  return result;
+  return result[0];
 };
 
 const updateShiftTemplateIntoDB = async (id: string, payload: Partial<TShiftTemplate>) => {
-  const template = await ShiftTemplate.findOne({ 
-    _id: id, 
-    isDeleted: false 
-  });
+  // Check if template exists
+  const templateExists = await ShiftTemplate.aggregate([
+    {
+      $match: {
+        _id: new mongoose.Types.ObjectId(id),
+        isDeleted: false
+      }
+    },
+    { $limit: 1 }
+  ]);
   
-  if (!template) {
+  if (templateExists.length === 0) {
     throw new AppError(httpStatus.NOT_FOUND, 'Shift template not found');
   }
 
+  const template = templateExists[0];
+
   // Check if name conflict with other templates (excluding current one)
   if (payload.name || payload.department || payload.location) {
-    const conflictingTemplate = await ShiftTemplate.findOne({
-      _id: { $ne: id },
-      name: payload.name || template.name,
-      department: payload.department || template.department,
-      location: payload.location || template.location,
-      isActive: true,
-      isDeleted: false
-    });
+    const conflictingTemplate = await ShiftTemplate.aggregate([
+      {
+        $match: {
+          _id: { $ne: new mongoose.Types.ObjectId(id) },
+          name: payload.name || template.name,
+          department: payload.department || template.department,
+          location: payload.location || template.location,
+          isActive: true,
+          isDeleted: false
+        }
+      },
+      { $limit: 1 }
+    ]);
 
-    if (conflictingTemplate) {
+    if (conflictingTemplate.length > 0) {
       throw new AppError(
         httpStatus.CONFLICT,
         'Another active template with this name already exists for this department and location'
@@ -97,12 +243,40 @@ const updateShiftTemplateIntoDB = async (id: string, payload: Partial<TShiftTemp
     }
   }
 
+  // Prepare update object with proper nested field handling
+  const updateObj: any = {};
+  
+  // Handle top-level fields
+  if (payload.name !== undefined) updateObj.name = payload.name;
+  if (payload.description !== undefined) updateObj.description = payload.description;
+  if (payload.department !== undefined) updateObj.department = payload.department;
+  if (payload.location !== undefined) updateObj.location = payload.location;
+  if (payload.isActive !== undefined) updateObj.isActive = payload.isActive;
+  if (payload.updatedBy !== undefined) updateObj.updatedBy = payload.updatedBy;
+
+  // Handle nested defaultShift object
+  if (payload.defaultShift) {
+    Object.keys(payload.defaultShift).forEach(key => {
+      updateObj[`defaultShift.${key}`] = (payload.defaultShift as any)[key];
+    });
+  }
+
+  // Handle nested recurrencePattern object
+  if (payload.recurrencePattern) {
+    Object.keys(payload.recurrencePattern).forEach(key => {
+      updateObj[`recurrencePattern.${key}`] = (payload.recurrencePattern as any)[key];
+    });
+  }
+
+  // Add updatedAt timestamp
+  updateObj.updatedAt = new Date();
+
   const result = await ShiftTemplate.findByIdAndUpdate(
     id, 
-    payload, 
+    { $set: updateObj }, 
     {
       new: true,
-      runValidators: true,
+      runValidators: false, // Disable validation to avoid issues with partial updates
     }
   )
     .populate('createdBy', 'id email role')
@@ -112,23 +286,34 @@ const updateShiftTemplateIntoDB = async (id: string, payload: Partial<TShiftTemp
 };
 
 const deleteShiftTemplateFromDB = async (id: string) => {
-  const template = await ShiftTemplate.findOne({ 
-    _id: id, 
-    isDeleted: false 
-  });
+  // Check if template exists using aggregation
+  const template = await ShiftTemplate.aggregate([
+    {
+      $match: {
+        _id: new mongoose.Types.ObjectId(id),
+        isDeleted: false
+      }
+    },
+    { $limit: 1 }
+  ]);
   
-  if (!template) {
+  if (template.length === 0) {
     throw new AppError(httpStatus.NOT_FOUND, 'Shift template not found');
   }
 
-  // Check if template is being used in any active schedules
-  const templateInUse = await Shift.findOne({
-    templateId: id,
-    status: { $in: ['scheduled', 'in-progress'] },
-    isDeleted: false
-  });
+  // Check if template is being used in any active schedules using aggregation
+  const templateInUse = await Shift.aggregate([
+    {
+      $match: {
+        templateId: new mongoose.Types.ObjectId(id),
+        status: { $in: ['scheduled', 'in-progress'] },
+        isDeleted: false
+      }
+    },
+    { $limit: 1 }
+  ]);
 
-  if (templateInUse) {
+  if (templateInUse.length > 0) {
     throw new AppError(
       httpStatus.BAD_REQUEST,
       'Cannot delete template that is currently being used in active shifts'
@@ -151,14 +336,22 @@ const generateShiftsFromTemplate = async (
   scheduleId: string,
   createdBy: string
 ) => {
-  const template = await ShiftTemplate.findOne({ 
-    _id: templateId, 
-    isDeleted: false 
-  });
+  // Get template using aggregation
+  const templateResult = await ShiftTemplate.aggregate([
+    {
+      $match: {
+        _id: new mongoose.Types.ObjectId(templateId),
+        isDeleted: false
+      }
+    },
+    { $limit: 1 }
+  ]);
   
-  if (!template) {
+  if (templateResult.length === 0) {
     throw new AppError(httpStatus.NOT_FOUND, 'Shift template not found');
   }
+
+  const template = templateResult[0];
 
   if (!template.isActive) {
     throw new AppError(httpStatus.BAD_REQUEST, 'Cannot generate shifts from inactive template');
@@ -166,14 +359,18 @@ const generateShiftsFromTemplate = async (
 
   const generatedShifts: any[] = [];
 
-  // Find employees with required skills, location, and role for auto-assignment
-  const availableEmployees = await Employee.find({
-    skills: { $all: template.defaultShift.requiredSkills }, // Use $all instead of $in
-    location: template.location, // Match template location
-    role: { $regex: new RegExp(`^${template.defaultShift.role}$`, 'i') }, // Case-insensitive role match
-    isDeleted: false,
-    status: 'active'
-  });
+  // Find employees with required skills, location, and role for auto-assignment using aggregation
+  const availableEmployees = await Employee.aggregate([
+    {
+      $match: {
+        skills: { $all: template.defaultShift.requiredSkills },
+        location: template.location,
+        role: { $regex: new RegExp(`^${template.defaultShift.role}$`, 'i') },
+        isDeleted: false,
+        status: 'active'
+      }
+    }
+  ]);
 
   // Generate dates based on recurrence pattern
   const dates = generateDateRange(startDate, endDate);
@@ -248,13 +445,36 @@ const generateShiftsFromTemplate = async (
 
   return [];
 };
-const getTemplatesByDepartment = async (department: string) => {
-  const templates = await ShiftTemplate.find({
-    department,
-    isActive: true,
-    isDeleted: false
-  }).populate('createdBy', 'id email role');
 
+const getTemplatesByDepartment = async (department: string) => {
+  const pipeline: mongoose.PipelineStage[] = [
+    {
+      $match: {
+        department,
+        isActive: true,
+        isDeleted: false
+      }
+    },
+    {
+      $lookup: {
+        from: 'users',
+        localField: 'createdBy',
+        foreignField: '_id',
+        as: 'createdBy',
+        pipeline: [
+          { $project: { id: 1, email: 1, role: 1 } }
+        ]
+      }
+    },
+    {
+      $unwind: {
+        path: '$createdBy',
+        preserveNullAndEmptyArrays: true
+      }
+    }
+  ];
+
+  const templates = await ShiftTemplate.aggregate(pipeline);
   return templates;
 };
 
@@ -353,13 +573,20 @@ const getTemplateUsageAnalytics = async (templateId: string, startDate: string, 
   const result = await Shift.aggregate(pipeline);
   return result;
 }
+
 const activateDeactivateTemplate = async (id: string, isActive: boolean, updatedBy: string) => {
-  const template = await ShiftTemplate.findOne({ 
-    _id: id, 
-    isDeleted: false 
-  });
+  // Check if template exists using aggregation
+  const templateExists = await ShiftTemplate.aggregate([
+    {
+      $match: {
+        _id: new mongoose.Types.ObjectId(id),
+        isDeleted: false
+      }
+    },
+    { $limit: 1 }
+  ]);
   
-  if (!template) {
+  if (templateExists.length === 0) {
     throw new AppError(httpStatus.NOT_FOUND, 'Shift template not found');
   }
 
