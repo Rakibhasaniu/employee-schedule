@@ -8,7 +8,6 @@ import { ShiftValidations } from './shift.validation';
 
 const router = express.Router();
 
-// Create shift
 router.post(
   '/',
   auth(USER_ROLE.superAdmin, USER_ROLE.admin),
@@ -45,7 +44,6 @@ router.get(
   ShiftControllers.detectConflicts,
 );
 
-// Employee specific endpoints
 router.get(
   '/employee/:employeeId',
   auth(USER_ROLE.superAdmin, USER_ROLE.admin),

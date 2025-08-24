@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// modules/ShiftTemplate/shiftTemplate.service.ts
 import httpStatus from 'http-status';
 import mongoose from 'mongoose';
 import AppError from '../../errors/AppError';
@@ -10,7 +9,6 @@ import { Shift } from '../shift/shift.model';
 import { generateDateRange, getDayName } from '../../utils/dateUtils';
 
 const createShiftTemplateIntoDB = async (payload: TShiftTemplate) => {
-  // Use aggregation to check for existing templates
   const existingTemplate = await ShiftTemplate.aggregate([
     {
       $match: {
@@ -40,10 +38,8 @@ const createShiftTemplateIntoDB = async (payload: TShiftTemplate) => {
 const getAllShiftTemplatesFromDB = async (query: Record<string, unknown>) => {
   const templateSearchableFields = ['name', 'description', 'department', 'location'];
   
-  // Build match stage based on query filters
   const matchStage: any = { isDeleted: false };
   
-  // Handle search functionality
   if (query.searchTerm) {
     const searchRegex = { $regex: query.searchTerm, $options: 'i' };
     matchStage.$or = templateSearchableFields.map(field => ({
@@ -51,14 +47,12 @@ const getAllShiftTemplatesFromDB = async (query: Record<string, unknown>) => {
     }));
   }
 
-  // Handle other filters
   Object.keys(query).forEach(key => {
     if (!['searchTerm', 'sort', 'limit', 'page', 'fields'].includes(key)) {
       matchStage[key] = query[key];
     }
   });
 
-  // Build sort stage
   let sortStage: any = { createdAt: -1 };
   if (query.sort) {
     const sortBy = query.sort as string;
@@ -67,12 +61,10 @@ const getAllShiftTemplatesFromDB = async (query: Record<string, unknown>) => {
     sortStage = { [sortField]: sortOrder };
   }
 
-  // Pagination
   const page = Number(query.page) || 1;
   const limit = Number(query.limit) || 10;
   const skip = (page - 1) * limit;
 
-  // Build projection stage for fields
   let projectStage: any = null;
   if (query.fields) {
     const fields = (query.fields as string).split(',');
@@ -86,7 +78,7 @@ const getAllShiftTemplatesFromDB = async (query: Record<string, unknown>) => {
     { $match: matchStage },
     {
       $lookup: {
-        from: 'users', // assuming users collection for createdBy
+        from: 'users', 
         localField: 'createdBy',
         foreignField: '_id',
         as: 'createdBy',
@@ -97,7 +89,7 @@ const getAllShiftTemplatesFromDB = async (query: Record<string, unknown>) => {
     },
     {
       $lookup: {
-        from: 'users', // assuming users collection for updatedBy
+        from: 'users', 
         localField: 'updatedBy',
         foreignField: '_id',
         as: 'updatedBy',
@@ -123,14 +115,12 @@ const getAllShiftTemplatesFromDB = async (query: Record<string, unknown>) => {
     { $limit: limit }
   ];
 
-  // Add projection stage if fields are specified
   if (projectStage) {
     pipeline.push({ $project: projectStage });
   }
 
   const result = await ShiftTemplate.aggregate(pipeline);
 
-  // Get total count for pagination
   const countPipeline = [
     { $match: matchStage },
     { $count: 'total' }

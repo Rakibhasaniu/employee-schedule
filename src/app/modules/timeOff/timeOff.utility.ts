@@ -1,17 +1,13 @@
 import { TIME_OFF_TYPE } from "./timeOff.constant";
 import { TTimeOffType } from "./timeOff.interface";
 
-
-/**
- * Calculate business days between two dates (excluding weekends)
- */
 export const calculateBusinessDays = (startDate: Date, endDate: Date): number => {
   let count = 0;
   const current = new Date(startDate);
   
   while (current <= endDate) {
     const dayOfWeek = current.getDay();
-    if (dayOfWeek !== 0 && dayOfWeek !== 6) { // Not Sunday (0) or Saturday (6)
+    if (dayOfWeek !== 0 && dayOfWeek !== 6) { 
       count++;
     }
     current.setDate(current.getDate() + 1);
@@ -20,34 +16,24 @@ export const calculateBusinessDays = (startDate: Date, endDate: Date): number =>
   return count;
 };
 
-/**
- * Calculate calendar days between two dates
- */
 export const calculateCalendarDays = (startDate: Date, endDate: Date): number => {
   const timeDiff = endDate.getTime() - startDate.getTime();
   return Math.ceil(timeDiff / (1000 * 3600 * 24)) + 1;
 };
 
-/**
- * Check if a date falls on a weekend
- */
 export const isWeekend = (date: Date): boolean => {
   const dayOfWeek = date.getDay();
-  return dayOfWeek === 0 || dayOfWeek === 6; // Sunday or Saturday
+  return dayOfWeek === 0 || dayOfWeek === 6; 
 };
 
-/**
- * Check if a date falls on a holiday
- */
+
 export const isHoliday = (date: Date, holidays: Date[]): boolean => {
   return holidays.some(holiday => 
     holiday.toDateString() === date.toDateString()
   );
 };
 
-/**
- * Get the next business day after a given date
- */
+
 export const getNextBusinessDay = (date: Date): Date => {
   const nextDay = new Date(date);
   nextDay.setDate(nextDay.getDate() + 1);
@@ -59,9 +45,7 @@ export const getNextBusinessDay = (date: Date): Date => {
   return nextDay;
 };
 
-/**
- * Format time-off duration for display
- */
+
 export const formatTimeOffDuration = (days: number): string => {
   if (days < 1) {
     return `${days * 8} hours`;
@@ -72,9 +56,7 @@ export const formatTimeOffDuration = (days: number): string => {
   }
 };
 
-/**
- * Get time-off type display name
- */
+
 export const getTimeOffTypeDisplay = (type: TTimeOffType): string => {
   const displayNames: Record<TTimeOffType, string> = {
     [TIME_OFF_TYPE.VACATION]: 'Vacation',
@@ -89,9 +71,7 @@ export const getTimeOffTypeDisplay = (type: TTimeOffType): string => {
   return displayNames[type] || type;
 };
 
-/**
- * Get time-off type color for UI
- */
+
 export const getTimeOffTypeColor = (type: TTimeOffType): string => {
   const colors: Record<TTimeOffType, string> = {
     [TIME_OFF_TYPE.VACATION]: '#3498db',      // Blue

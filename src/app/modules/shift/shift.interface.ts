@@ -1,4 +1,3 @@
-// modules/Shift/shift.interface.ts
 import { Types } from 'mongoose';
 
 export type TShiftType = 'morning' | 'afternoon' | 'night' | 'full-day';
@@ -25,7 +24,6 @@ export interface TShift {
   isDeleted: boolean;
 }
 
-// Aggregation result interfaces
 export interface TShiftCoverage {
   location: string;
   date: Date;

@@ -13,7 +13,6 @@ const router = express.Router();
 router.get(
   '/',
   auth(USER_ROLE.superAdmin, USER_ROLE.admin),
-  // validateRequest(TimeOffValidations.timeOffQueryValidationSchema),
   TimeOffControllers.getAllTimeOffRequests
 );
 
@@ -24,18 +23,7 @@ router.get(
   TimeOffControllers.getTimeOffAnalytics
 );
 
-router.get(
-  '/calendar',
-  auth(USER_ROLE.superAdmin, USER_ROLE.admin),
-  validateRequest(TimeOffValidations.timeOffQueryValidationSchema),
-  TimeOffControllers.getTimeOffCalendar
-);
 
-router.post(
-  '/bulk-approve',
-  auth(USER_ROLE.superAdmin, USER_ROLE.admin),
-  TimeOffControllers.bulkApproveTimeOffRequests
-);
 
 router.get(
   '/employee/:employeeId/balance',
@@ -43,11 +31,6 @@ router.get(
   TimeOffControllers.getEmployeeBalance
 );
 
-router.get(
-  '/employee/:employeeId/summary',
-  auth(USER_ROLE.superAdmin, USER_ROLE.admin),
-  TimeOffControllers.getEmployeeTimeOffSummary
-);
 
 router.get(
   '/:id',
@@ -75,7 +58,6 @@ router.delete(
   TimeOffControllers.deleteTimeOffRequest
 );
 
-// ====== EMPLOYEE SELF-SERVICE ROUTES ======
 
 router.post(
   '/create',
@@ -84,12 +66,6 @@ router.post(
   TimeOffControllers.createTimeOffRequest
 );
 
-router.get(
-  '/me/requests',
-  auth(USER_ROLE.employee),
-  validateRequest(TimeOffValidations.timeOffQueryValidationSchema),
-  TimeOffControllers.getMyTimeOffRequests
-);
 
 router.get(
   '/me/balance',
@@ -97,10 +73,5 @@ router.get(
   TimeOffControllers.getMyTimeOffBalance
 );
 
-router.get(
-  '/me/summary',
-  auth(USER_ROLE.employee),
-  TimeOffControllers.getMyTimeOffSummary
-);
 
 export const TimeOffRoutes = router;

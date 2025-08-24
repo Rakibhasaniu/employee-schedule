@@ -99,7 +99,6 @@ const updateScheduleIntoDB = async (id: string, payload: Partial<TSchedule>) => 
   }
 
   if (payload.shifts) {
-    // Get the original createdBy from the schedule
     const originalCreatedBy = schedule.createdBy;
     
     payload.shifts = payload.shifts.map(shift => ({

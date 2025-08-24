@@ -4,8 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-        "seed:admin": "npx ts-node src/seedAdmin.ts",
-
+    "seed:admin": "npx ts-node src/seedAdmin.ts",
     "start:prod": "node ./dist/server.js",
     "start:dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "build": "tsc",

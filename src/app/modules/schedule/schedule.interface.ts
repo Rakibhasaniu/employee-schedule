@@ -1,4 +1,3 @@
-// modules/Schedule/schedule.interface.ts
 import { Types } from 'mongoose';
 
 export type TShiftType = 'morning' | 'afternoon' | 'night' | 'full-day';

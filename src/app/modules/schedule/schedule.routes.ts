@@ -1,4 +1,3 @@
-// modules/Schedule/schedule.route.ts
 import express from 'express';
 import auth from '../../middlewares/auth';
 import validateRequest from '../../middlewares/validateRequest';
@@ -64,7 +63,6 @@ router.patch(
 router.get(
   '/employee/:employeeId',
   auth(USER_ROLE.superAdmin, USER_ROLE.admin),
-  // validateRequest(ScheduleValidations.dateRangeValidationSchema),
   ScheduleControllers.getEmployeeSchedules,
 );
 
@@ -72,7 +70,6 @@ router.get(
 router.get(
   '/me/schedule',
   auth(USER_ROLE.employee),
-  // validateRequest(ScheduleValidations.dateRangeValidationSchema),
   ScheduleControllers.getMySchedule,
 );
 

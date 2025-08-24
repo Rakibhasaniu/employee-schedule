@@ -1,4 +1,3 @@
-// modules/ShiftTemplate/shiftTemplate.model.ts
 import { Schema, model } from 'mongoose';
 
 export interface TShiftTemplate {
@@ -116,12 +115,10 @@ const shiftTemplateSchema = new Schema<TShiftTemplate>({
   timestamps: true 
 });
 
-// Indexes
 shiftTemplateSchema.index({ department: 1, location: 1 });
 shiftTemplateSchema.index({ isActive: 1 });
 shiftTemplateSchema.index({ createdBy: 1 });
 
-// Query middleware for soft delete
 shiftTemplateSchema.pre('find', function (next) {
   this.find({ isDeleted: { $ne: true } });
   next();
@@ -132,9 +129,7 @@ shiftTemplateSchema.pre('findOne', function (next) {
   next();
 });
 
-// Validation middleware
 shiftTemplateSchema.pre('save', function(next) {
-  // Validate start time is before end time
   const start = new Date(`1970-01-01T${this.defaultShift.startTime}`);
   const end = new Date(`1970-01-01T${this.defaultShift.endTime}`);
   
@@ -143,7 +138,6 @@ shiftTemplateSchema.pre('save', function(next) {
     return;
   }
   
-  // Validate recurrence pattern
   if (this.recurrencePattern.type === 'weekly' && (!this.recurrencePattern.days || this.recurrencePattern.days.length === 0)) {
     next(new Error('Weekly recurrence requires at least one day'));
     return;

@@ -9,13 +9,11 @@ import { Employee } from '../employee/employee.model';
 import { TimeOffRequest } from '../timeOff/timeOff.model';
 
 const createShiftIntoDB = async (payload: TShift & { createdBy: string }) => {
-  // Validate employee exists
   const employee = await Employee.findById(payload.employee);
   if (!employee) {
     throw new AppError(httpStatus.NOT_FOUND, 'Employee not found');
   }
 
-  // Check if employee is available on the given date
   const shiftDate = new Date(payload.date);
   const dayOfWeek = shiftDate.toLocaleDateString('en-US', { 
     weekday: 'long' 
@@ -28,7 +26,6 @@ const createShiftIntoDB = async (payload: TShift & { createdBy: string }) => {
     );
   }
 
-  // Check for approved time-off conflicts - FIXED: Use TimeOffRequest instead of TimeOf
   const timeOffConflict = await TimeOffRequest.findOne({
     employee: payload.employee,
     status: 'approved',
@@ -43,7 +40,6 @@ const createShiftIntoDB = async (payload: TShift & { createdBy: string }) => {
     );
   }
 
-  // Check for shift conflicts using aggregation
   const conflicts = await detectShiftConflicts(payload);
   if (conflicts.length > 0) {
     throw new AppError(
@@ -104,7 +100,6 @@ const updateShiftIntoDB = async (id: string, payload: Partial<TShift>) => {
     );
   }
 
-  // If updating employee or time, check for conflicts
   if (payload.employee || payload.date || payload.startTime || payload.endTime) {
     const updatedShift = { ...shift.toObject(), ...payload };
     const conflicts = await detectShiftConflicts(updatedShift as TShift, id);
@@ -149,99 +144,6 @@ const deleteShiftFromDB = async (id: string) => {
   return result;
 };
 
-// MongoDB Aggregation Pipelines
-
-// const getShiftCoverageByDateRange = async (
-//   startDate: string, 
-//   endDate: string, 
-//   location?: string
-// ): Promise<TShiftCoverage[]> => {
-//   const matchStage: mongoose.FilterQuery<any> = {
-//     date: {
-//       $gte: new Date(startDate),
-//       $lte: new Date(endDate)
-//     },
-//     status: { $ne: 'cancelled' }
-//   };
-
-//   if (location) {
-//     matchStage.location = location;
-//   }
-
-//   const pipeline: mongoose.PipelineStage[] = [
-//     { $match: matchStage },
-//     {
-//       $lookup: {
-//         from: 'employees',
-//         localField: 'employee',
-//         foreignField: '_id',
-//         as: 'employeeInfo'
-//       }
-//     },
-//     { $unwind: '$employeeInfo' },
-//     {
-//       $addFields: {
-//         duration: {
-//           $divide: [
-//             {
-//               $subtract: [
-//                 { $dateFromString: { dateString: { $concat: ['1970-01-01T', '$endTime', ':00'] } } },
-//                 { $dateFromString: { dateString: { $concat: ['1970-01-01T', '$startTime', ':00'] } } }
-//               ]
-//             },
-//             1000 * 60 * 60 // Convert to hours
-//           ]
-//         }
-//       }
-//     },
-//     {
-//       $group: {
-//         _id: {
-//           location: '$location',
-//           date: '$date'
-//         },
-//         totalShifts: { $sum: 1 },
-//         totalHours: { $sum: '$duration' },
-//         roleBreakdown: {
-//           $push: {
-//             role: '$role',
-//             employee: {
-//               id: '$employeeInfo.id',
-//               name: { $concat: ['$employeeInfo.name.firstName', ' ', '$employeeInfo.name.lastName'] }
-//             }
-//           }
-//         }
-//       }
-//     },
-//     {
-//       $group: {
-//         _id: '$_id.location',
-//         dates: {
-//           $push: {
-//             date: '$_id.date',
-//             totalShifts: '$totalShifts',
-//             totalHours: '$totalHours',
-//             roleBreakdown: '$roleBreakdown'
-//           }
-//         }
-//       }
-//     },
-//     {
-//       $project: {
-//         _id: 0,
-//         location: '$_id',
-//         dates: 1
-//       }
-//     },
-//     { 
-//       $sort: { location: 1 as const } 
-//     }
-//   ];
-
-//   const result = await Shift.aggregate(pipeline);
-//   return result;
-// };
-// modules/Shift/shift.service.ts - Fixed aggregation pipeline
 const getShiftCoverageByDateRange = async (
   startDate: string, 
   endDate: string, 
@@ -273,7 +175,6 @@ const getShiftCoverageByDateRange = async (
     { $unwind: '$employeeInfo' },
     {
       $addFields: {
-        // Calculate duration in hours (handling break time)
         duration: {
           $subtract: [
             {
@@ -306,10 +207,10 @@ const getShiftCoverageByDateRange = async (
                     }
                   ]
                 },
-                1000 * 60 * 60 // Convert from milliseconds to hours
+                1000 * 60 * 60 
               ]
             },
-            { $divide: ['$breakDuration', 60] } // Convert break minutes to hours
+            { $divide: ['$breakDuration', 60] } 
           ]
         }
       }
@@ -516,7 +417,7 @@ const detectConflictsWithAggregation = async (
     },
     {
       $match: {
-        'shifts.1': { $exists: true } // Only employees with multiple shifts on same date
+        'shifts.1': { $exists: true } 
       }
     },
     {
@@ -631,7 +532,6 @@ const getShiftsByEmployee = async (employeeId: string, startDate: string, endDat
   return result;
 };
 
-// Helper function to detect shift conflicts
 const detectShiftConflicts = async (shiftData: TShift, excludeShiftId?: string): Promise<any[]> => {
   const matchStage: any = {
     employee: shiftData.employee,

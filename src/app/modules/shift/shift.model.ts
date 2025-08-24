@@ -122,7 +122,6 @@ shiftSchema.pre('aggregate', function (next) {
 
 // Validation middleware
 shiftSchema.pre('save', function(next) {
-  // Validate start time is before end time
   const start = new Date(`1970-01-01T${this.startTime}`);
   const end = new Date(`1970-01-01T${this.endTime}`);
   

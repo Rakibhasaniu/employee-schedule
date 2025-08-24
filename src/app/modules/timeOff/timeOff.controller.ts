@@ -163,17 +163,7 @@ const getTimeOffAnalytics = catchAsync(async (req: Request, res: Response) => {
   });
 });
 
-const getEmployeeTimeOffSummary = catchAsync(async (req: Request, res: Response) => {
-  const { employeeId } = req.params;
-  const result = await TimeOffServices.getEmployeeTimeOffSummaryFromDB(employeeId);
 
-  sendResponse(res, {
-    statusCode: httpStatus.OK,
-    success: true,
-    message: 'Employee time-off summary retrieved successfully',
-    data: result,
-  });
-});
 
 const getEmployeeBalance = catchAsync(async (req: Request, res: Response) => {
   const { employeeId } = req.params;
@@ -188,76 +178,12 @@ const getEmployeeBalance = catchAsync(async (req: Request, res: Response) => {
 });
 
 
-const bulkApproveTimeOffRequests = catchAsync(async (req: Request, res: Response) => {
-  const { requestIds } = req.body;
-  const userStringId = (req as any).user.userId;
-  const userRole = (req as any).user.role;
-  
-  if (userRole !== 'superAdmin' && userRole !== 'admin') {
-    throw new AppError(httpStatus.FORBIDDEN, 'Only administrators can bulk approve requests');
-  }
-
-  const results = await Promise.all(
-    requestIds.map((id: string) =>
-      TimeOffServices.reviewTimeOffRequestIntoDB(
-        id,
-        { status: 'approved' },
-        userStringId
-      )
-    )
-  );
-
-  sendResponse(res, {
-    statusCode: httpStatus.OK,
-    success: true,
-    message: `${results.length} time-off requests approved successfully`,
-    data: results,
-  });
-});
-
-const getTimeOffCalendar = catchAsync(async (req: Request, res: Response) => {
-  const { startDate, endDate } = req.query;
-  
-  const calendarQuery = {
-    status: 'approved',
-    startDate: startDate as string,
-    endDate: endDate as string,
-  };
-
-  const result = await TimeOffServices.getAllTimeOffRequestsFromDB(calendarQuery);
-
-  const calendarEvents = result.result.map((request: any) => ({
-    id: request._id,
-    title: `${request.employee.name.firstName} ${request.employee.name.lastName} - ${request.type}`,
-    start: request.startDate,
-    end: request.endDate,
-    type: request.type,
-    employee: request.employee,
-    allDay: true,
-    backgroundColor: getTypeColor(request.type),
-  }));
-
-  sendResponse(res, {
-    statusCode: httpStatus.OK,
-    success: true,
-    message: 'Time-off calendar retrieved successfully',
-    data: calendarEvents,
-  });
-});
 
 
-const getTypeColor = (type: string): string => {
-  const colors: Record<string, string> = {
-    vacation: '#3498db',
-    sick: '#e74c3c',
-    personal: '#f39c12',
-    emergency: '#e67e22',
-    bereavement: '#34495e',
-    maternity: '#e91e63',
-    paternity: '#9c27b0',
-  };
-  return colors[type] || '#95a5a6';
-};
+
+
+
+
 
 export const TimeOffControllers = {
   createTimeOffRequest,
@@ -270,8 +196,5 @@ export const TimeOffControllers = {
   getMyTimeOffBalance,
   getMyTimeOffSummary,
   getTimeOffAnalytics,
-  getEmployeeTimeOffSummary,
   getEmployeeBalance,
-  bulkApproveTimeOffRequests,
-  getTimeOffCalendar,
 };

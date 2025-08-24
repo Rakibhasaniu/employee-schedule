@@ -1,4 +1,3 @@
-// modules/Schedule/schedule.model.ts
 import { Schema, model } from 'mongoose';
 import { TSchedule, TShift, TCoverage, TConflict } from './schedule.interface';
 

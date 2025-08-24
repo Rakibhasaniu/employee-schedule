@@ -116,7 +116,6 @@ const getAllTimeOffRequestsFromDB = async (query: Record<string, unknown>) => {
       model: 'Employee'
     });
 
-  // Handle date filtering manually if dates are provided
   if (query.startDate || query.endDate) {
     const dateFilter: any = {};
     
@@ -131,7 +130,6 @@ const getAllTimeOffRequestsFromDB = async (query: Record<string, unknown>) => {
     baseQuery = baseQuery.where(dateFilter);
   }
 
-  // Remove date params from query to avoid double processing
   const filteredQuery = { ...query };
   delete filteredQuery.startDate;
   delete filteredQuery.endDate;
@@ -151,26 +149,6 @@ const getAllTimeOffRequestsFromDB = async (query: Record<string, unknown>) => {
   return { result, meta };
 };
 
-// const getAllTimeOffRequestsFromDB = async (query: Record<string, unknown>) => {
-//   const timeOffQuery = new QueryBuilder(
-//     TimeOffRequest.find()
-//       .populate('employee', 'id name email department')
-//       .populate('requestedBy', 'id name email')
-//       .populate('reviewedBy', 'id email role')
-//       .populate('replacementEmployee', 'id name email'),
-//     query
-//   )
-//     .search(TIME_OFF_SEARCHABLE_FIELDS)
-//     .filter()
-//     .sort()
-//     .paginate()
-//     .fields();
-
-//   const result = await timeOffQuery.modelQuery;
-//   const meta = await timeOffQuery.countTotal();
-
-//   return { result, meta };
-// };
 
 const getSingleTimeOffRequestFromDB = async (id: string): Promise<TTimeOffRequest> => {
   const result = await TimeOffRequest.findById(id)
@@ -196,7 +174,6 @@ const updateTimeOffRequestIntoDB = async (
     throw new AppError(httpStatus.NOT_FOUND, 'Time-off request not found');
   }
 
-  // Check if request can be modified
   if (timeOffRequest.status !== TIME_OFF_STATUS.PENDING) {
     throw new AppError(
       httpStatus.BAD_REQUEST,

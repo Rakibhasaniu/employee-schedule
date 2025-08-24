@@ -1,4 +1,4 @@
-// modules/Schedule/schedule.validation.ts
+// modules/Schedule/.validation.ts
 import { z } from 'zod';
 
 const shiftSchema = z.object({

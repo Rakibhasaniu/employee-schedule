@@ -1,11 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// src/seedAdmin.ts
 import mongoose from 'mongoose';
 import bcrypt from 'bcrypt';
 
 async function seedAdmin() {
   try {
-    // Connect to MongoDB with a NEW database name
     await mongoose.connect('mongodb+srv://nizum:5kXPMsQBqhf65LZr@cluster0.4fphg1c.mongodb.net/schedule?retryWrites=true&w=majority&appName=Cluster0');
     console.log('Connected to MongoDB (scheduler-app database)');
 
@@ -49,10 +47,7 @@ async function seedAdmin() {
     console.log('✅ Super Admin created successfully!');
     console.log('ID:', newAdmin.id);
     console.log('Email:', newAdmin.email);
-    console.log('Password: admin123');
-    console.log('\n🚀 You can now login with:');
-    console.log('POST /api/v1/auth/login');
-    console.log('Body: { "id": "SA-0001", "password": "admin123" }');
+ 
     
   } catch (error: any) {
     console.error('❌ Error:', error.message);

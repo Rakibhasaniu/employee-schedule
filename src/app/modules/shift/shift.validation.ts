@@ -1,4 +1,3 @@
-// modules/Shift/shift.validation.ts
 import { z } from 'zod';
 
 const createShiftValidationSchema = z.object({
@@ -91,9 +90,9 @@ const shiftCoverageValidationSchema = z.object({
     endDate: z.string().transform((str) => new Date(str)),
     location: z.string().optional(),
   }).refine((data) => {
-    return data.startDate <= data.endDate; // Changed from < to <=
+    return data.startDate <= data.endDate; 
   }, {
-    message: "Start date must be before or equal to end date", // Updated message
+    message: "Start date must be before or equal to end date", 
     path: ["startDate"],
   }),
 });

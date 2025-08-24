@@ -1,4 +1,3 @@
-// modules/ShiftTemplate/shiftTemplate.validation.ts
 import { z } from 'zod';
 
 const createShiftTemplateValidationSchema = z.object({
